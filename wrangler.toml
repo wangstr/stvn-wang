@@ -1,0 +1,6 @@
+name = "stvn-wang"
+compatibility_date = "2026-02-15"
+pages_build_output_dir = "."
+
+[site]
+bucket = "."
