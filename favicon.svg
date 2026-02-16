@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SW">
+  <rect width="64" height="64" fill="#0d0f12" />
+  <text
+    x="50%"
+    y="52%"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    fill="#ecebe6"
+    font-family="Helvetica, Arial, sans-serif"
+    font-size="30"
+    font-weight="700"
+    letter-spacing="1"
+  >SW</text>
+</svg>
