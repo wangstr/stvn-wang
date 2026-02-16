@@ -27,6 +27,9 @@ class ASCIIBlobAnimation {
         this.lastFrameTime = 0;
         this.isExploding = false;
         this.explodeStart = 0;
+        this.explosionDuration = 1450;
+        this.explosionParticles = [];
+        this.hideTimer = null;
 
         this.brightness = new Float32Array(0);
         this.depth = new Float32Array(0);
@@ -159,14 +162,72 @@ class ASCIIBlobAnimation {
         if (this.isExploding) {
             return;
         }
-        this.isExploding = true;
-        this.explodeStart = performance.now();
-        this.intro.classList.add('exploding');
+        this.startExplosion(performance.now());
+    }
 
-        setTimeout(() => {
+    startExplosion(now) {
+        this.isExploding = true;
+        this.explodeStart = now;
+        this.intro.classList.add('exploding');
+        this.buildExplosionParticles();
+
+        if (this.hideTimer) {
+            clearTimeout(this.hideTimer);
+        }
+        this.hideTimer = setTimeout(() => {
             this.intro.classList.add('hidden');
             this.content.classList.add('visible');
-        }, 820);
+        }, this.explosionDuration);
+    }
+
+    buildExplosionParticles() {
+        const lines = this.asciiText.textContent.split('\n');
+        const points = [];
+        const maxParticles = 2200;
+
+        for (let y = 0; y < lines.length; y += 1) {
+            const line = lines[y];
+            for (let x = 0; x < line.length; x += 1) {
+                const char = line[x];
+                if (char === ' ') {
+                    continue;
+                }
+                points.push({ x, y, char });
+            }
+        }
+
+        if (points.length > maxParticles) {
+            const sampled = [];
+            const step = points.length / maxParticles;
+            for (let i = 0; i < maxParticles; i += 1) {
+                sampled.push(points[Math.floor(i * step)]);
+            }
+            points.length = 0;
+            points.push(...sampled);
+        }
+
+        const total = points.length;
+        const cx = this.cols * 0.5;
+        const cy = this.rows * 0.5;
+        this.explosionParticles = [];
+
+        for (let i = 0; i < total; i += 1) {
+            const source = points[i];
+
+            const dx = source.x - cx;
+            const dy = source.y - cy;
+            const dist = Math.max(1, Math.hypot(dx, dy));
+            const speed = 0.05 + Math.random() * 0.1;
+            const particle = {
+                x: source.x,
+                y: source.y,
+                vx: (dx / dist) * speed + (Math.random() - 0.5) * 0.03,
+                vy: (dy / dist) * speed + (Math.random() - 0.5) * 0.03,
+                char: source.char,
+                seed: Math.random() * Math.PI * 2
+            };
+            this.explosionParticles.push(particle);
+        }
     }
 
     clearBuffers() {
@@ -340,30 +401,46 @@ class ASCIIBlobAnimation {
         this.asciiText.textContent = lines.join('\n');
     }
 
-    renderExplosion(now) {
-        const progress = (now - this.explodeStart) / 820;
+    renderExplosion(now, deltaMs) {
+        const progress = Math.min(1, (now - this.explodeStart) / this.explosionDuration);
         if (progress >= 1) {
             this.asciiText.textContent = '';
             return;
         }
 
-        const lines = this.asciiText.textContent.split('\n');
-        const displaced = lines.map((line) => {
-            const chars = line.split('');
-            for (let i = 0; i < chars.length; i += 1) {
-                if (chars[i] === ' ') {
-                    continue;
-                }
-                const threshold = progress * (1.1 + Math.random() * 0.7);
-                if (Math.random() < threshold) {
-                    chars[i] = ' ';
-                }
-            }
-            return chars.join('');
-        });
+        const dt = Math.max(0.25, Math.min(2.2, deltaMs / 16));
+        const wobble = (1 - progress) * 0.015;
 
-        this.asciiText.textContent = displaced.join('\n');
-        this.asciiText.style.opacity = `${Math.max(0, 1 - progress * 1.35)}`;
+        for (let i = 0; i < this.explosionParticles.length; i += 1) {
+            const particle = this.explosionParticles[i];
+
+            particle.vx *= 0.992;
+            particle.vy *= 0.992;
+            particle.vy += 0.0011 * dt;
+            particle.vx += Math.sin(now * 0.0012 + particle.seed) * wobble * dt;
+            particle.vy += Math.cos(now * 0.001 + particle.seed) * wobble * 0.65 * dt;
+
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+        }
+
+        const grid = Array.from({ length: this.rows }, () => Array(this.cols).fill(' '));
+        for (let i = 0; i < this.explosionParticles.length; i += 1) {
+            if (progress > 0.42 && Math.random() < (progress - 0.42) * 0.95) {
+                continue;
+            }
+            const particle = this.explosionParticles[i];
+            const x = Math.round(particle.x);
+            const y = Math.round(particle.y);
+            if (x < 0 || y < 0 || x >= this.cols || y >= this.rows) {
+                continue;
+            }
+            grid[y][x] = particle.char;
+        }
+
+        this.asciiText.textContent = grid.map((row) => row.join('')).join('\n');
+        const tailFade = progress < 0.72 ? 0.96 : Math.max(0, 0.96 - (progress - 0.72) / 0.28);
+        this.asciiText.style.opacity = `${tailFade}`;
     }
 
     animate(timeMs) {
@@ -374,7 +451,7 @@ class ASCIIBlobAnimation {
         this.lastFrameTime = timeMs;
 
         if (this.isExploding) {
-            this.renderExplosion(timeMs);
+            this.renderExplosion(timeMs, deltaMs);
         } else {
             this.asciiText.style.opacity = '1';
             this.drawTorusField(timeMs);
